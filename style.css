@@ -1,0 +1,49 @@
+body {
+  background: #0f1115;
+  color: #ddd;
+  font-family: sans-serif;
+}
+
+.module {
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  margin: 20px;
+  padding: 12px;
+  background: #151922;
+}
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: bold;
+}
+
+.module-body {
+  display: flex;
+  gap: 20px;
+}
+
+.controls {
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.controls input[type="range"] {
+  width: 100%;
+}
+
+.seed-row {
+  display: flex;
+  gap: 5px;
+}
+
+.output canvas {
+  border-radius: 6px;
+  background: black;
+
+  /* ✅ pixelated rendering */
+  image-rendering: pixelated;
+}
