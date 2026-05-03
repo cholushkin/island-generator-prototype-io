@@ -1,4 +1,5 @@
 import * as THREE from 'https://esm.sh/three@0.160';
+import { buildMarchingCubes } from '../modules/mcubes/marchingcubes.js';
 
 class Field3D {
   constructor(w, h, d, data) {
@@ -25,11 +26,18 @@ function generateBlobs(size = 16) {
   const data = new Float32Array(size * size * size);
   const field = new Field3D(size, size, size, data);
 
-  const blobs = [
-    [4, 4, 4],
-    [10, 10, 8],
-    [8, 6, 12]
-  ];
+  const blobCount = 2 + Math.floor(Math.random() * 4); // 2–5
+
+  const blobs = [];
+
+  for (let i = 0; i < blobCount; i++) {
+    blobs.push([
+      Math.random() * size,
+      Math.random() * size,
+      Math.random() * size,
+      4 + Math.random() * 6
+    ]);
+  }
 
   for (let z = 0; z < size; z++) {
     for (let y = 0; y < size; y++) {
@@ -44,7 +52,10 @@ function generateBlobs(size = 16) {
 
           const dist = dx * dx + dy * dy + dz * dz;
 
-          if (dist < 10) v = 1;
+          if (dist < b[3]) {
+            v = 1;
+            break;
+          }
         }
 
         field.set(x, y, z, v);
@@ -56,12 +67,14 @@ function generateBlobs(size = 16) {
 }
 
 export function createMarchingCubesModule(container) {
+
   const module = document.createElement('div');
   module.className = 'module';
 
   module.innerHTML = `
     <div class="module-header">
-      <span>3D Field (Dots)</span>
+      <span>Marching Cubes (custom)</span>
+      <button id="regen">regen</button>
     </div>
     <div class="module-body">
       <canvas></canvas>
@@ -71,24 +84,24 @@ export function createMarchingCubesModule(container) {
   container.appendChild(module);
 
   const canvas = module.querySelector('canvas');
+  const button = module.querySelector('#regen');
 
-  canvas.width = 500;
-  canvas.height = 500;
-  canvas.style.width = '500px';
-  canvas.style.height = '500px';
-  canvas.style.display = 'block';
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    depth: true
+  });
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(500, 500);
   renderer.setClearColor(0x222222);
 
   const scene = new THREE.Scene();
 
   const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-  camera.position.set(3, 3, 3);
+  camera.position.set(4, 4, 4);
   camera.lookAt(0, 0, 0);
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
   const light = new THREE.DirectionalLight(0xffffff, 1);
   light.position.set(5, 5, 5);
@@ -97,41 +110,35 @@ export function createMarchingCubesModule(container) {
   const group = new THREE.Group();
   scene.add(group);
 
-  const size = 16;
-  const field = generateBlobs(size);
+  const resolution = 16;
+  const cubeSize = 4;
 
-  const cubeSize = 2; // 🔥 twice bigger
-  const spacing = cubeSize / size;
+  let mesh = null;
 
-  const filledGeo = new THREE.SphereGeometry(0.04, 8, 8);
-  const emptyGeo = new THREE.SphereGeometry(0.01, 6, 6);
-
-  const filledMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc });
-  const emptyMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
-
-  for (let z = 0; z < size; z++) {
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-
-        const isFilled = field.get(x, y, z) > 0;
-
-        const geo = isFilled ? filledGeo : emptyGeo;
-        const mat = isFilled ? filledMat : emptyMat;
-
-        const m = new THREE.Mesh(geo, mat);
-
-        m.position.set(
-          x * spacing - cubeSize / 2,
-          y * spacing - cubeSize / 2,
-          z * spacing - cubeSize / 2
-        );
-
-        group.add(m);
-      }
+  function rebuild() {
+    if (mesh) {
+      group.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      mesh = null;
     }
+
+    const field = generateBlobs(resolution);
+    const geo = buildMarchingCubes(field, resolution, 0.5, cubeSize);
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x00ffcc,
+      flatShading: true,
+      side: THREE.DoubleSide
+    });
+
+    mesh = new THREE.Mesh(geo, mat);
+    group.add(mesh);
   }
 
-  // ✅ cube edges only (no diagonals)
+  rebuild();
+
+  // cube edges
   const edges = new THREE.EdgesGeometry(
     new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize)
   );
@@ -142,6 +149,38 @@ export function createMarchingCubesModule(container) {
   );
 
   group.add(line);
+
+  // cube faces (transparent colored planes)
+  const faceGeo = new THREE.PlaneGeometry(cubeSize, cubeSize);
+
+  const faces = [
+    { color: 0xff0000, pos: [ cubeSize/2, 0, 0 ], rot: [0, -Math.PI/2, 0] },
+    { color: 0x880000, pos: [-cubeSize/2, 0, 0 ], rot: [0,  Math.PI/2, 0] },
+
+    { color: 0x00ff00, pos: [0,  cubeSize/2, 0 ], rot: [ Math.PI/2, 0, 0] },
+    { color: 0x008800, pos: [0, -cubeSize/2, 0 ], rot: [-Math.PI/2, 0, 0] },
+
+    { color: 0x0000ff, pos: [0, 0,  cubeSize/2], rot: [0, 0, 0] },
+    { color: 0x000088, pos: [0, 0, -cubeSize/2], rot: [0, Math.PI, 0] }
+  ];
+
+  faces.forEach(f => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: f.color,
+      transparent: true,
+      opacity: 0.1,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const m = new THREE.Mesh(faceGeo, mat);
+    m.position.set(...f.pos);
+    m.rotation.set(...f.rot);
+
+    group.add(m);
+  });
+
+  button.addEventListener('click', rebuild);
 
   function animate() {
     requestAnimationFrame(animate);
