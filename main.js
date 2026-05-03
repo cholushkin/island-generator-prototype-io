@@ -15,4 +15,4 @@ const mc = createMarchingCubesModule(app);
 
 mask.setInput(() => noise.getOutput());
 terrain.setInput(() => mask.getOutput());
-mc.setInput(() => true);
+mc.setInput(() => syntex.getOutput());

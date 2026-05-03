@@ -2,15 +2,13 @@ import * as THREE from 'https://esm.sh/three@0.160';
 import { buildMarchingCubes } from '../modules/mcubes/marchingcubes.js';
 
 class Field3D {
-  constructor(w, h, d, data) {
-    this.w = w;
-    this.h = h;
-    this.d = d;
-    this.data = data;
+  constructor(size) {
+    this.size = size;
+    this.data = new Float32Array(size * size * size);
   }
 
   index(x, y, z) {
-    return x + y * this.w + z * this.w * this.h;
+    return x + y * this.size + z * this.size * this.size;
   }
 
   get(x, y, z) {
@@ -22,41 +20,35 @@ class Field3D {
   }
 }
 
-function generateBlobs(size = 16) {
-  const data = new Float32Array(size * size * size);
-  const field = new Field3D(size, size, size, data);
+// 🔥 TRUE scalar field (no floor / no ceiling)
+function buildFieldFrom2D(inputField, size, heightScale) {
+  const field = new Field3D(size);
 
-  const blobCount = 2 + Math.floor(Math.random() * 4);
+  const w = inputField.width;
+  const h = inputField.height;
 
-  const blobs = [];
+  function sample(ix, iz) {
+    const x = Math.floor((ix / size) * w);
+    const z = Math.floor((iz / size) * h);
 
-  for (let i = 0; i < blobCount; i++) {
-    blobs.push([
-      Math.random() * size,
-      Math.random() * size,
-      Math.random() * size,
-      4 + Math.random() * 6
-    ]);
+    const xi = Math.max(0, Math.min(w - 1, x));
+    const zi = Math.max(0, Math.min(h - 1, z));
+
+    return inputField.data[zi * w + xi] || 0;
   }
 
   for (let z = 0; z < size; z++) {
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
+    for (let x = 0; x < size; x++) {
 
-        let v = 0;
+      const density = sample(x, z); // 0..1
 
-        for (let b of blobs) {
-          const dx = x - b[0];
-          const dy = y - b[1];
-          const dz = z - b[2];
+      // scale height influence
+      const maxY = density * (size * heightScale);
 
-          const dist = dx * dx + dy * dy + dz * dz;
+      for (let y = 0; y < size; y++) {
 
-          if (dist < b[3]) {
-            v = 1;
-            break;
-          }
-        }
+        // signed distance-like field
+        const v = maxY - y;
 
         field.set(x, y, z, v);
       }
@@ -66,24 +58,6 @@ function generateBlobs(size = 16) {
   return field;
 }
 
-// 🔥 padding fix
-function padField(original, size) {
-  const newSize = size + 2;
-  const data = new Float32Array(newSize * newSize * newSize);
-
-  const field = new Field3D(newSize, newSize, newSize, data);
-
-  for (let z = 0; z < size; z++) {
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        field.set(x + 1, y + 1, z + 1, original.get(x, y, z));
-      }
-    }
-  }
-
-  return { field, size: newSize };
-}
-
 export function createMarchingCubesModule(container) {
 
   const module = document.createElement('div');
@@ -91,49 +65,88 @@ export function createMarchingCubesModule(container) {
 
   module.innerHTML = `
     <div class="module-header">
-      <span>Marching Cubes (custom)</span>
-      <button id="regen">regen</button>
+      <span>Marching Cubes</span>
     </div>
+
     <div class="module-body">
-      <canvas></canvas>
+      <div class="controls">
+
+        <label>Iso Level <span id="isoVal">0.0</span></label>
+        <input type="range" id="iso" min="-2" max="2" step="0.05" value="0">
+
+        <label>Height <span id="hVal">1.0</span></label>
+        <input type="range" id="height" min="0.2" max="2" step="0.1" value="1">
+
+        <div style="margin-top:10px;">
+          <button id="rebuild">Rebuild</button>
+        </div>
+
+        <div style="margin-top:10px;">
+          <button id="zoomIn">+</button>
+          <button id="zoomOut">-</button>
+        </div>
+
+      </div>
+
+      <div class="output">
+        <canvas></canvas>
+      </div>
     </div>
   `;
 
   container.appendChild(module);
 
   const canvas = module.querySelector('canvas');
-  const button = module.querySelector('#regen');
+  const rebuildBtn = module.querySelector('#rebuild');
+  const zoomInBtn = module.querySelector('#zoomIn');
+  const zoomOutBtn = module.querySelector('#zoomOut');
 
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    antialias: false,
-    depth: true
-  });
+  const isoSlider = module.querySelector('#iso');
+  const heightSlider = module.querySelector('#height');
 
+  const isoVal = module.querySelector('#isoVal');
+  const hVal = module.querySelector('#hVal');
+
+  const renderer = new THREE.WebGLRenderer({ canvas });
   renderer.setSize(500, 500);
-  renderer.setClearColor(0x222222);
+  renderer.setClearColor(0x111111);
 
   const scene = new THREE.Scene();
 
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-  camera.position.set(4, 4, 4);
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 10);
+  camera.position.set(2.5, 2.5, 2.5);
   camera.lookAt(0, 0, 0);
 
   scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
   const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(5, 5, 5);
+  light.position.set(3, 4, 3);
   scene.add(light);
 
   const group = new THREE.Group();
   scene.add(group);
 
-  const resolution = 16;
+  const size = 32;
   const cubeSize = 4;
 
   let mesh = null;
+  let getInput = null;
 
   function rebuild() {
+    if (!getInput) return;
+
+    const input = getInput();
+    if (!input || !input.data) {
+      console.warn('MC: input not ready');
+      return;
+    }
+
+    const iso = parseFloat(isoSlider.value);
+    const heightScale = parseFloat(heightSlider.value);
+
+    isoVal.textContent = iso.toFixed(2);
+    hVal.textContent = heightScale.toFixed(2);
+
     if (mesh) {
       group.remove(mesh);
       mesh.geometry.dispose();
@@ -141,15 +154,9 @@ export function createMarchingCubesModule(container) {
       mesh = null;
     }
 
-    const base = generateBlobs(resolution);
-    const padded = padField(base, resolution);
+    const field3D = buildFieldFrom2D(input, size, heightScale);
 
-    const geo = buildMarchingCubes(
-      padded.field,
-      padded.size,
-      0.5,
-      cubeSize
-    );
+    const geo = buildMarchingCubes(field3D, size, iso, cubeSize);
 
     const mat = new THREE.MeshStandardMaterial({
       color: 0x00ffcc,
@@ -158,60 +165,39 @@ export function createMarchingCubesModule(container) {
     });
 
     mesh = new THREE.Mesh(geo, mat);
+
+    // scale + flip
+    mesh.scale.set(0.7, -0.7, 0.7);
+
+    // fix lighting after flip
+    mesh.geometry.computeVertexNormals();
+
     group.add(mesh);
   }
 
-  rebuild();
+  rebuildBtn.addEventListener('click', rebuild);
 
-  // cube edges
-  const edges = new THREE.EdgesGeometry(
-    new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize)
-  );
-
-  const line = new THREE.LineSegments(
-    edges,
-    new THREE.LineBasicMaterial({ color: 0xffffff })
-  );
-
-  group.add(line);
-
-  // cube faces (transparent)
-  const faceGeo = new THREE.PlaneGeometry(cubeSize, cubeSize);
-
-  const faces = [
-    { color: 0xff0000, pos: [ cubeSize/2, 0, 0 ], rot: [0, -Math.PI/2, 0] },
-    { color: 0x880000, pos: [-cubeSize/2, 0, 0 ], rot: [0,  Math.PI/2, 0] },
-
-    { color: 0x00ff00, pos: [0,  cubeSize/2, 0 ], rot: [ Math.PI/2, 0, 0] },
-    { color: 0x008800, pos: [0, -cubeSize/2, 0 ], rot: [-Math.PI/2, 0, 0] },
-
-    { color: 0x0000ff, pos: [0, 0,  cubeSize/2], rot: [0, 0, 0] },
-    { color: 0x000088, pos: [0, 0, -cubeSize/2], rot: [0, Math.PI, 0] }
-  ];
-
-  faces.forEach(f => {
-    const mat = new THREE.MeshBasicMaterial({
-      color: f.color,
-      transparent: true,
-      opacity: 0.1,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-
-    const m = new THREE.Mesh(faceGeo, mat);
-    m.position.set(...f.pos);
-    m.rotation.set(...f.rot);
-
-    group.add(m);
+  // sliders update labels only (no auto rebuild)
+  isoSlider.addEventListener('input', () => {
+    isoVal.textContent = parseFloat(isoSlider.value).toFixed(2);
   });
 
-  button.addEventListener('click', rebuild);
+  heightSlider.addEventListener('input', () => {
+    hVal.textContent = parseFloat(heightSlider.value).toFixed(2);
+  });
+
+  zoomInBtn.addEventListener('click', () => {
+    camera.position.multiplyScalar(0.8);
+  });
+
+  zoomOutBtn.addEventListener('click', () => {
+    camera.position.multiplyScalar(1.2);
+  });
 
   function animate() {
     requestAnimationFrame(animate);
 
     group.rotation.y += 0.01;
-    group.rotation.x += 0.005;
 
     renderer.render(scene, camera);
   }
@@ -219,6 +205,8 @@ export function createMarchingCubesModule(container) {
   animate();
 
   return {
-    setInput() {}
+    setInput(fn) {
+      getInput = fn;
+    }
   };
 }
