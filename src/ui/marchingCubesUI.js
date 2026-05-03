@@ -26,7 +26,7 @@ function generateBlobs(size = 16) {
   const data = new Float32Array(size * size * size);
   const field = new Field3D(size, size, size, data);
 
-  const blobCount = 2 + Math.floor(Math.random() * 4); // 2–5
+  const blobCount = 2 + Math.floor(Math.random() * 4);
 
   const blobs = [];
 
@@ -64,6 +64,24 @@ function generateBlobs(size = 16) {
   }
 
   return field;
+}
+
+// 🔥 padding fix
+function padField(original, size) {
+  const newSize = size + 2;
+  const data = new Float32Array(newSize * newSize * newSize);
+
+  const field = new Field3D(newSize, newSize, newSize, data);
+
+  for (let z = 0; z < size; z++) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        field.set(x + 1, y + 1, z + 1, original.get(x, y, z));
+      }
+    }
+  }
+
+  return { field, size: newSize };
 }
 
 export function createMarchingCubesModule(container) {
@@ -123,8 +141,15 @@ export function createMarchingCubesModule(container) {
       mesh = null;
     }
 
-    const field = generateBlobs(resolution);
-    const geo = buildMarchingCubes(field, resolution, 0.5, cubeSize);
+    const base = generateBlobs(resolution);
+    const padded = padField(base, resolution);
+
+    const geo = buildMarchingCubes(
+      padded.field,
+      padded.size,
+      0.5,
+      cubeSize
+    );
 
     const mat = new THREE.MeshStandardMaterial({
       color: 0x00ffcc,
@@ -150,7 +175,7 @@ export function createMarchingCubesModule(container) {
 
   group.add(line);
 
-  // cube faces (transparent colored planes)
+  // cube faces (transparent)
   const faceGeo = new THREE.PlaneGeometry(cubeSize, cubeSize);
 
   const faces = [
