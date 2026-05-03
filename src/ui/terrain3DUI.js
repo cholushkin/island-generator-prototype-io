@@ -1,4 +1,4 @@
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js';
+import * as THREE from 'https://esm.sh/three@0.160';
 import { createTerrainMesh } from '../modules/terrainMesh.js';
 
 export function createTerrain3DModule(container) {
