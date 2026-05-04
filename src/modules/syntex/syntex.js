@@ -1,4 +1,4 @@
-import { synthWFC } from './algorithms/wfc.js';
+import { synthWFC } from './algorithms/WFC.js';
 
 /* -----------------------------
    Internal mask (white edges)
