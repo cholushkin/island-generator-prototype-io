@@ -1,7 +1,7 @@
 # Procedural Island Generator (WIP)
 
 👉 **Live Demo:**  
-https://cholushkin.github.io/island-generator-prototype/
+https://cholushkin.github.io/island-generator-prototype-io/
 
 Interactive procedural terrain generator exploring Noise → Mask → SynTex → Marching Cubes pipeline directly in the browser.
 
