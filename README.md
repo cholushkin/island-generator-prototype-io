@@ -57,9 +57,7 @@ terrain.setInput(() => mask.getOutput());
 
 ---
 
-## Running the Project
-
-### Locally
+## Running locally
 
 You must use a local server (ES modules won't run via `file://`).
 
@@ -78,8 +76,4 @@ http://localhost:8000
 Or simply run `start_local_server.cmd`
 
 ---
-
-### Online
-
-[https://cholushkin.github.io/island-generator-prototype-io/](https://cholushkin.github.io/island-generator-prototype-io/)
 
