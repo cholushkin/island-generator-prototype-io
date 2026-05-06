@@ -54,6 +54,8 @@ terrain.setInput(() => mask.getOutput());
   - A node that generates layered noise with independent parameters
   - Nodes for distributing cities across the island (plateau masks on the landscape where cities can be placed)
   - A node for generating cities based on the Syntex algorithm
+  
+[Application, brinstorming, ideas](ideas.md)
 
 ---
 
