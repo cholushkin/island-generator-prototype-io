@@ -204,9 +204,17 @@ export function createMarchingCubesModule(container) {
 
   animate();
 
-  return {
-    setInput(fn) {
-      getInput = fn;
-    }
-  };
+return {
+
+  setInput(fn) {
+    getInput = fn;
+    rebuild();
+  },
+
+  rebuild,
+
+  getMesh() {
+    return mesh;
+  }
+};
 }

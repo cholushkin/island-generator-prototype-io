@@ -34,7 +34,7 @@ export function createSynTexModule(container) {
         <input type="range" id="patch" min="4" max="64" step="4" value="16">
 
         <label>Size <span id="sizeVal">256</span></label>
-        <input type="range" id="size" min="32" max="256" step="32" value="256">
+        <input type="range" id="size" min="32" max="256" step="32" value="32">
 
         <label>Seed</label>
         <div class="seed-row">
@@ -49,7 +49,7 @@ export function createSynTexModule(container) {
         <input type="range" id="maskRadius" min="0.1" max="0.8" step="0.05" value="0.4">
 
         <label>Mask Softness</label>
-        <input type="range" id="maskSoftness" min="0.01" max="0.5" step="0.01" value="0.1">
+        <input type="range" id="maskSoftness" min="0.01" max="0.5" step="0.01" value="0.2">
 
         <button id="regen">Generate</button>
       </div>
