@@ -1,7 +1,8 @@
 import * as THREE from 'https://esm.sh/three@0.160';
 import { createTerrainMesh, createWaterPlane } from '../modules/terrainMesh.js';
 import { createEmitter } from '../core/reactive.js';
-import { createViewport3d, bindZoomButtons } from './helpers/viewport3d.js';
+import { createViewport3d } from './helpers/viewport3d.js';
+import { createCameraControls } from './helpers/cameraControls.js';
 import { syncLabel } from './helpers/controls.js';
 
 export function createLandmassModule(container, configNode) {
@@ -38,11 +39,6 @@ export function createLandmassModule(container, configNode) {
           value="0.05"
         >
 
-        <div style="margin-top:10px;">
-          <button class="zoomIn">+</button>
-          <button class="zoomOut">-</button>
-        </div>
-
       </div>
 
       <div class="output">
@@ -64,15 +60,18 @@ export function createLandmassModule(container, configNode) {
     far: 10
   });
 
-  viewport.setAutoRotate(config.autoRotate);
-  viewport.setRotationSpeed(config.rotationSpeed);
+  const cameraControls = createCameraControls(viewport, canvas, {
+    getTarget: () => new THREE.Vector3(0, 0, 0),
+    radius: 1.4,
+    height: 1.0,
+    topHeight: 2.5,
+    rotateSpeed: config.rotationSpeed
+  });
 
-  bindZoomButtons(module, viewport);
+  module.querySelector('.output').appendChild(cameraControls.el);
 
-  // everything that rotates lives in this group
   const group = new THREE.Group();
   viewport.scene.add(group);
-  viewport.setRotationTarget(group);
 
   const waterPlane = createWaterPlane();
   group.add(waterPlane);
@@ -137,11 +136,10 @@ export function createLandmassModule(container, configNode) {
     const c = configNode.getConfig();
     viewport.setSize(c.viewportSize);
     viewport.setBackground(c.background);
-    viewport.setAutoRotate(c.autoRotate);
-    viewport.setRotationSpeed(c.rotationSpeed);
+    cameraControls.setRotateSpeed(c.rotationSpeed);
   });
 
-  viewport.startLoop();
+  viewport.startLoop(dt => cameraControls.update(dt));
 
   // public API
   return {

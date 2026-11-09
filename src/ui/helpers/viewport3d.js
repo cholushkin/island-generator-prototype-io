@@ -28,10 +28,6 @@ export function createViewport3d(canvas, options = {}) {
   light.position.set(cameraDistance, cameraDistance * 1.5, cameraDistance);
   scene.add(light);
 
-  let rotatingGroup = null;
-  let autoRotate = true;
-  let rotationSpeed = 0.003;
-
   function setSize(px) {
     renderer.setSize(px, px);
   }
@@ -40,31 +36,18 @@ export function createViewport3d(canvas, options = {}) {
     renderer.setClearColor(color);
   }
 
-  function zoom(factor) {
-    camera.position.multiplyScalar(factor);
-  }
-
-  function setRotationTarget(group) {
-    rotatingGroup = group;
-  }
-
-  function setAutoRotate(v) {
-    autoRotate = v;
-  }
-
-  function setRotationSpeed(v) {
-    rotationSpeed = v;
-  }
-
+  // onFrame(dt) runs before each render, dt in seconds
   function startLoop(onFrame) {
+    let last = performance.now();
+
     function animate() {
       requestAnimationFrame(animate);
 
-      if (autoRotate && rotatingGroup) {
-        rotatingGroup.rotation.y += rotationSpeed;
-      }
+      const now = performance.now();
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
 
-      if (onFrame) onFrame();
+      if (onFrame) onFrame(dt);
 
       renderer.render(scene, camera);
     }
@@ -78,18 +61,6 @@ export function createViewport3d(canvas, options = {}) {
     camera,
     setSize,
     setBackground,
-    zoom,
-    setRotationTarget,
-    setAutoRotate,
-    setRotationSpeed,
     startLoop
   };
-}
-
-export function bindZoomButtons(container, viewport, selectors = { in: '.zoomIn', out: '.zoomOut' }) {
-  const zoomIn = container.querySelector(selectors.in);
-  const zoomOut = container.querySelector(selectors.out);
-
-  if (zoomIn) zoomIn.addEventListener('click', () => viewport.zoom(0.8));
-  if (zoomOut) zoomOut.addEventListener('click', () => viewport.zoom(1.2));
 }

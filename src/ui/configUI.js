@@ -16,16 +16,14 @@ export function createConfigModule(container) {
         <label>3D Viewport Size <span class="val-size">500</span></label>
         <input type="range" class="viewportSize" min="300" max="700" step="10" value="500">
 
-        <label>
-          <input type="checkbox" class="autoRotate" checked>
-          Auto Rotate
-        </label>
-
-        <label>Rotation Speed <span class="val-speed">0.003</span></label>
-        <input type="range" class="rotationSpeed" min="0" max="0.02" step="0.001" value="0.003">
+        <label>Camera Orbit Speed <span class="val-speed">0.3</span></label>
+        <input type="range" class="rotationSpeed" min="0" max="1" step="0.01" value="0.3">
 
         <label>Background</label>
         <input type="color" class="background" value="#111111">
+
+        <label>Castle Color</label>
+        <input type="color" class="castleColor" value="#e6ffe6">
 
       </div>
     </div>
@@ -34,9 +32,9 @@ export function createConfigModule(container) {
   container.appendChild(module);
 
   const viewportSize = module.querySelector('.viewportSize');
-  const autoRotate = module.querySelector('.autoRotate');
   const rotationSpeed = module.querySelector('.rotationSpeed');
   const background = module.querySelector('.background');
+  const castleColor = module.querySelector('.castleColor');
 
   const valSize = module.querySelector('.val-size');
   const valSpeed = module.querySelector('.val-speed');
@@ -45,23 +43,23 @@ export function createConfigModule(container) {
 
   const config = {
     viewportSize: 500,
-    autoRotate: true,
-    rotationSpeed: 0.003,
-    background: 0x111111
+    rotationSpeed: 0.3,
+    background: 0x111111,
+    castleColor: 0xe6ffe6
   };
 
   function update() {
     config.viewportSize = syncLabel(viewportSize, valSize, v => v.toFixed(0));
-    config.autoRotate = autoRotate.checked;
-    config.rotationSpeed = syncLabel(rotationSpeed, valSpeed, v => v.toFixed(3));
+    config.rotationSpeed = syncLabel(rotationSpeed, valSpeed, v => v.toFixed(2));
     config.background = parseInt(background.value.slice(1), 16);
+    config.castleColor = parseInt(castleColor.value.slice(1), 16);
 
     emitter.emit();
   }
 
   [viewportSize, rotationSpeed].forEach(el => el.addEventListener('input', update));
-  autoRotate.addEventListener('change', update);
   background.addEventListener('input', update);
+  castleColor.addEventListener('input', update);
 
   update();
 

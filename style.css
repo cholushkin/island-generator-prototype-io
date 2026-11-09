@@ -115,14 +115,32 @@ body {
   gap: 6px;
 }
 
-.eye-row {
+/* shared camera controls, rendered under every 3D viewport */
+.camera-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   font-size: 12px;
   color: #aaa;
 }
 
-.eye-row button {
+.camera-controls button {
   cursor: pointer;
+  background: #1b2029;
+  color: #ccc;
+  border: 1px solid #2a2f3a;
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.camera-controls button.active {
+  border-color: #4ea1ff;
+  color: #4ea1ff;
+}
+
+.camera-controls-label {
+  margin-left: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

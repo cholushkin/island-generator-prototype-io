@@ -1,6 +1,7 @@
 import * as THREE from 'https://esm.sh/three@0.160';
 import { createEmitter } from '../core/reactive.js';
-import { createViewport3d, bindZoomButtons } from './helpers/viewport3d.js';
+import { createViewport3d } from './helpers/viewport3d.js';
+import { createCameraControls } from './helpers/cameraControls.js';
 
 // island footprint half-extent in world space after the terrain's 20x scale
 const ISLAND_HALF = 10;
@@ -31,21 +32,12 @@ export function createFinalModule(container, configNode) {
         <label>Scale Y</label>
         <input type="range" id="sy" min="0.1" max="5" step="0.01" value="0.5">
 
-        <div style="margin-top:10px;">
-          <button class="zoomIn">+</button>
-          <button class="zoomOut">-</button>
-        </div>
-
       </div>
 
       <div class="output">
         <canvas></canvas>
 
         <div class="second-viewport">
-          <div class="eye-row">
-            <button id="eyeBtn">👁</button>
-            <span id="viewLabel">Corner NE</span>
-          </div>
           <canvas id="secondCanvas"></canvas>
         </div>
       </div>
@@ -57,13 +49,11 @@ export function createFinalModule(container, configNode) {
 
   const canvas = module.querySelector('canvas');
   const secondCanvas = module.querySelector('#secondCanvas');
-  const eyeBtn = module.querySelector('#eyeBtn');
-  const viewLabel = module.querySelector('#viewLabel');
 
   const config = configNode.getConfig();
 
   // -------------------------
-  // main (orbiting) viewport
+  // main viewport
   // -------------------------
   const viewport = createViewport3d(canvas, {
     size: config.viewportSize,
@@ -73,51 +63,43 @@ export function createFinalModule(container, configNode) {
     ambient: 0.8
   });
 
-  viewport.camera.position.set(18, 14, 18);
-  viewport.camera.lookAt(0, 0, 0);
-
-  viewport.setAutoRotate(config.autoRotate);
-  viewport.setRotationSpeed(config.rotationSpeed);
-
-  bindZoomButtons(module, viewport);
-
   const scene = viewport.scene;
 
+  // the camera always looks at the castle - this is kept up to date on
+  // every rebuild(), after the raycast placement settles its position
+  const castleTarget = new THREE.Vector3(0, 0, 0);
+
+  const mainCameraControls = createCameraControls(viewport, canvas, {
+    getTarget: () => castleTarget,
+    radius: ISLAND_HALF + 4,
+    height: ISLAND_HALF + 8,
+    topHeight: ISLAND_HALF + 20,
+    rotateSpeed: config.rotationSpeed,
+    defaultMode: 'auto'
+  });
+
+  module.querySelector('.output').appendChild(mainCameraControls.el);
+
   // -------------------------
-  // second viewport: 4 corners + top-down, cycled by the eye button
+  // second viewport - same scene, independent camera + controls
   // -------------------------
   const secondRenderer = new THREE.WebGLRenderer({ canvas: secondCanvas, antialias: true });
   secondRenderer.setSize(config.viewportSize, config.viewportSize);
   secondRenderer.setClearColor(config.background);
 
-  function makeCornerCamera(x, z) {
-    const cam = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-    cam.position.set(x, ISLAND_HALF + 8, z);
-    cam.lookAt(0, 0, 0);
-    return cam;
-  }
+  const secondCamera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+  const secondViewportStub = { camera: secondCamera };
 
-  const topCam = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
-  topCam.position.set(0, ISLAND_HALF + 20, 0);
-  topCam.up.set(0, 0, -1); // avoid the lookAt gimbal case when staring straight down
-  topCam.lookAt(0, 0, 0);
-
-  const corner = ISLAND_HALF + 4;
-
-  const views = [
-    { cam: makeCornerCamera(corner, corner), label: 'Corner NE' },
-    { cam: makeCornerCamera(-corner, corner), label: 'Corner NW' },
-    { cam: makeCornerCamera(-corner, -corner), label: 'Corner SW' },
-    { cam: makeCornerCamera(corner, -corner), label: 'Corner SE' },
-    { cam: topCam, label: 'Top' }
-  ];
-
-  let viewIndex = 0;
-
-  eyeBtn.addEventListener('click', () => {
-    viewIndex = (viewIndex + 1) % views.length;
-    viewLabel.textContent = views[viewIndex].label;
+  const secondCameraControls = createCameraControls(secondViewportStub, secondCanvas, {
+    getTarget: () => castleTarget,
+    radius: ISLAND_HALF + 4,
+    height: ISLAND_HALF + 8,
+    topHeight: ISLAND_HALF + 20,
+    rotateSpeed: config.rotationSpeed,
+    defaultMode: 'static'
   });
+
+  module.querySelector('.second-viewport').appendChild(secondCameraControls.el);
 
   // -------------------------
   // controls
@@ -212,10 +194,10 @@ export function createFinalModule(container, configNode) {
       }
     }
 
-    // material
+    // material / color (configurable)
     if (castle.material) {
       castle.material = castle.material.clone();
-      castle.material.color.setRGB(0.9, 1.0, 0.9);
+      castle.material.color.setHex(configNode.getConfig().castleColor);
     }
 
     if (castle.geometry) {
@@ -226,22 +208,31 @@ export function createFinalModule(container, configNode) {
 
     scene.add(world);
 
+    // keep the cameras locked onto the castle's actual position
+    const finalBBox = new THREE.Box3().setFromObject(castle);
+    castleTarget.copy(finalBBox.getCenter(new THREE.Vector3()));
+
     emitter.emit();
   }
 
   configNode.subscribe(() => {
     const c = configNode.getConfig();
+
     viewport.setSize(c.viewportSize);
     viewport.setBackground(c.background);
-    viewport.setAutoRotate(c.autoRotate);
-    viewport.setRotationSpeed(c.rotationSpeed);
+    mainCameraControls.setRotateSpeed(c.rotationSpeed);
 
     secondRenderer.setSize(c.viewportSize, c.viewportSize);
     secondRenderer.setClearColor(c.background);
+    secondCameraControls.setRotateSpeed(c.rotationSpeed);
+
+    rebuild(); // castle color may have changed
   });
 
-  viewport.startLoop(() => {
-    secondRenderer.render(scene, views[viewIndex].cam);
+  viewport.startLoop(dt => {
+    mainCameraControls.update(dt);
+    secondCameraControls.update(dt);
+    secondRenderer.render(scene, secondCamera);
   });
 
   // public API

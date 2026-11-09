@@ -2,7 +2,8 @@ import * as THREE from 'https://esm.sh/three@0.160';
 import { buildMarchingCubes } from '../modules/mcubes/marchingcubes.js';
 import { buildFieldFrom2D } from '../modules/mcubes/fieldBuilder.js';
 import { createEmitter } from '../core/reactive.js';
-import { createViewport3d, bindZoomButtons } from './helpers/viewport3d.js';
+import { createViewport3d } from './helpers/viewport3d.js';
+import { createCameraControls } from './helpers/cameraControls.js';
 import { syncLabel } from './helpers/controls.js';
 
 export function createMarchingCubesModule(container, configNode) {
@@ -23,11 +24,6 @@ export function createMarchingCubesModule(container, configNode) {
 
         <label>Height <span id="hVal">1.0</span></label>
         <input type="range" id="height" min="0.2" max="2" step="0.1" value="1">
-
-        <div style="margin-top:10px;">
-          <button class="zoomIn">+</button>
-          <button class="zoomOut">-</button>
-        </div>
 
       </div>
 
@@ -54,14 +50,18 @@ export function createMarchingCubesModule(container, configNode) {
     cameraDistance: 2.5
   });
 
-  viewport.setAutoRotate(config.autoRotate);
-  viewport.setRotationSpeed(config.rotationSpeed);
+  const cameraControls = createCameraControls(viewport, canvas, {
+    getTarget: () => new THREE.Vector3(0, 0, 0),
+    radius: 3,
+    height: 2.2,
+    topHeight: 5,
+    rotateSpeed: config.rotationSpeed
+  });
 
-  bindZoomButtons(module, viewport);
+  module.querySelector('.output').appendChild(cameraControls.el);
 
   const group = new THREE.Group();
   viewport.scene.add(group);
-  viewport.setRotationTarget(group);
 
   const size = 32;
   const cubeSize = 4;
@@ -117,11 +117,10 @@ export function createMarchingCubesModule(container, configNode) {
     const c = configNode.getConfig();
     viewport.setSize(c.viewportSize);
     viewport.setBackground(c.background);
-    viewport.setAutoRotate(c.autoRotate);
-    viewport.setRotationSpeed(c.rotationSpeed);
+    cameraControls.setRotateSpeed(c.rotationSpeed);
   });
 
-  viewport.startLoop();
+  viewport.startLoop(dt => cameraControls.update(dt));
 
   return {
     el: module,

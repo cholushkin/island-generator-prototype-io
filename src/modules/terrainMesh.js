@@ -39,11 +39,12 @@ export function createTerrainMesh(field, options = {}) {
   return mesh;
 }
 
-// A flat plane representing the water surface. It shares the terrain's
-// footprint (unit plane) and is positioned/scaled by the caller so moving
-// the water level only requires repositioning this mesh, no regeneration.
+// A flat plane representing the water surface. It matches the terrain's
+// own footprint exactly (same unit plane) and is positioned/scaled by the
+// caller so moving the water level only requires repositioning this mesh,
+// no regeneration.
 export function createWaterPlane() {
-  const geo = new THREE.PlaneGeometry(1.4, 1.4);
+  const geo = new THREE.PlaneGeometry(1, 1);
   geo.rotateX(-Math.PI / 2);
 
   const mat = new THREE.MeshStandardMaterial({
