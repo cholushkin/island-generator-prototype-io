@@ -1,4 +1,6 @@
 import { applyMask } from '../modules/mask.js';
+import { createEmitter } from '../core/reactive.js';
+import { renderFieldGrayscale } from './helpers/fieldCanvas.js';
 
 export function createMaskModule(container) {
   const module = document.createElement('div');
@@ -6,8 +8,7 @@ export function createMaskModule(container) {
 
   module.innerHTML = `
     <div class="module-header">
-      <span>2. Mask</span>
-      <span>Output: masked</span>
+      <span>3. Mask</span>
     </div>
 
     <div class="module-body">
@@ -17,7 +18,7 @@ export function createMaskModule(container) {
 
         <label>Threshold <span id="thVal">0.0</span></label>
         <input type="range" id="threshold" min="0" max="1" step="0.01" value="0.0">
-        
+
         <label>Softness <span id="softVal">0.10</span></label>
         <input type="range" id="softness" min="0" max="0.5" step="0.01" value="0.1">
       </div>
@@ -39,34 +40,19 @@ export function createMaskModule(container) {
 
   const radiusVal = module.querySelector('#radiusVal');
   const thVal = module.querySelector('#thVal');
-  
+
   const softness = module.querySelector('#softness');
   const softVal = module.querySelector('#softVal');
 
-  let getInput = null;
+  const emitter = createEmitter();
+
+  let inputNode = null;
   let outputField = null;
 
-  function renderField(field) {
-    const img = ctx.createImageData(field.width, field.height);
-
-    for (let i = 0; i < field.data.length; i++) {
-      let v = field.data[i];
-      v = Math.max(0, Math.min(1, v));
-      v = Math.floor(v * 255);
-
-      img.data[i * 4] = v;
-      img.data[i * 4 + 1] = v;
-      img.data[i * 4 + 2] = v;
-      img.data[i * 4 + 3] = 255;
-    }
-
-    ctx.putImageData(img, 0, 0);
-  }
-
   function update() {
-    if (!getInput) return;
+    if (!inputNode) return;
 
-    const input = getInput();
+    const input = inputNode.getOutput();
     if (!input) return;
 
     const r = parseFloat(radius.value);
@@ -78,7 +64,8 @@ export function createMaskModule(container) {
     softVal.textContent = s.toFixed(2);
 
     outputField = applyMask(input, r, t, s);
-    renderField(outputField);
+    renderFieldGrayscale(ctx, outputField);
+    emitter.emit();
   }
 
   [radius, threshold, softness].forEach(el => {
@@ -86,10 +73,13 @@ export function createMaskModule(container) {
   });
 
   return {
-    setInput(fn) {
-      getInput = fn;
+    el: module,
+    setInput(node) {
+      inputNode = node;
+      node.subscribe(update);
       update();
     },
-    getOutput: () => outputField
+    getOutput: () => outputField,
+    subscribe: emitter.subscribe
   };
 }

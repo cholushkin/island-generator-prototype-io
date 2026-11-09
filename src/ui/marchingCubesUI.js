@@ -1,71 +1,18 @@
 import * as THREE from 'https://esm.sh/three@0.160';
 import { buildMarchingCubes } from '../modules/mcubes/marchingcubes.js';
+import { buildFieldFrom2D } from '../modules/mcubes/fieldBuilder.js';
+import { createEmitter } from '../core/reactive.js';
+import { createViewport3d, bindZoomButtons } from './helpers/viewport3d.js';
+import { syncLabel } from './helpers/controls.js';
 
-class Field3D {
-  constructor(size) {
-    this.size = size;
-    this.data = new Float32Array(size * size * size);
-  }
-
-  index(x, y, z) {
-    return x + y * this.size + z * this.size * this.size;
-  }
-
-  get(x, y, z) {
-    return this.data[this.index(x, y, z)];
-  }
-
-  set(x, y, z, v) {
-    this.data[this.index(x, y, z)] = v;
-  }
-}
-
-// 🔥 TRUE scalar field (no floor / no ceiling)
-function buildFieldFrom2D(inputField, size, heightScale) {
-  const field = new Field3D(size);
-
-  const w = inputField.width;
-  const h = inputField.height;
-
-  function sample(ix, iz) {
-    const x = Math.floor((ix / size) * w);
-    const z = Math.floor((iz / size) * h);
-
-    const xi = Math.max(0, Math.min(w - 1, x));
-    const zi = Math.max(0, Math.min(h - 1, z));
-
-    return inputField.data[zi * w + xi] || 0;
-  }
-
-  for (let z = 0; z < size; z++) {
-    for (let x = 0; x < size; x++) {
-
-      const density = sample(x, z); // 0..1
-
-      // scale height influence
-      const maxY = density * (size * heightScale);
-
-      for (let y = 0; y < size; y++) {
-
-        // signed distance-like field
-        const v = maxY - y;
-
-        field.set(x, y, z, v);
-      }
-    }
-  }
-
-  return field;
-}
-
-export function createMarchingCubesModule(container) {
+export function createMarchingCubesModule(container, configNode) {
 
   const module = document.createElement('div');
   module.className = 'module';
 
   module.innerHTML = `
     <div class="module-header">
-      <span>Marching Cubes</span>
+      <span>6. Marching Cubes</span>
     </div>
 
     <div class="module-body">
@@ -78,12 +25,8 @@ export function createMarchingCubesModule(container) {
         <input type="range" id="height" min="0.2" max="2" step="0.1" value="1">
 
         <div style="margin-top:10px;">
-          <button id="rebuild">Rebuild</button>
-        </div>
-
-        <div style="margin-top:10px;">
-          <button id="zoomIn">+</button>
-          <button id="zoomOut">-</button>
+          <button class="zoomIn">+</button>
+          <button class="zoomOut">-</button>
         </div>
 
       </div>
@@ -97,9 +40,7 @@ export function createMarchingCubesModule(container) {
   container.appendChild(module);
 
   const canvas = module.querySelector('canvas');
-  const rebuildBtn = module.querySelector('#rebuild');
-  const zoomInBtn = module.querySelector('#zoomIn');
-  const zoomOutBtn = module.querySelector('#zoomOut');
+  const config = configNode.getConfig();
 
   const isoSlider = module.querySelector('#iso');
   const heightSlider = module.querySelector('#height');
@@ -107,45 +48,37 @@ export function createMarchingCubesModule(container) {
   const isoVal = module.querySelector('#isoVal');
   const hVal = module.querySelector('#hVal');
 
-  const renderer = new THREE.WebGLRenderer({ canvas });
-  renderer.setSize(500, 500);
-  renderer.setClearColor(0x111111);
+  const viewport = createViewport3d(canvas, {
+    size: config.viewportSize,
+    background: config.background,
+    cameraDistance: 2.5
+  });
 
-  const scene = new THREE.Scene();
+  viewport.setAutoRotate(config.autoRotate);
+  viewport.setRotationSpeed(config.rotationSpeed);
 
-  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 10);
-  camera.position.set(2.5, 2.5, 2.5);
-  camera.lookAt(0, 0, 0);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-  const light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(3, 4, 3);
-  scene.add(light);
+  bindZoomButtons(module, viewport);
 
   const group = new THREE.Group();
-  scene.add(group);
+  viewport.scene.add(group);
+  viewport.setRotationTarget(group);
 
   const size = 32;
   const cubeSize = 4;
 
   let mesh = null;
-  let getInput = null;
+  let inputNode = null;
+
+  const emitter = createEmitter();
 
   function rebuild() {
-    if (!getInput) return;
+    if (!inputNode) return;
 
-    const input = getInput();
-    if (!input || !input.data) {
-      console.warn('MC: input not ready');
-      return;
-    }
+    const input = inputNode.getOutput();
+    if (!input || !input.data) return;
 
-    const iso = parseFloat(isoSlider.value);
-    const heightScale = parseFloat(heightSlider.value);
-
-    isoVal.textContent = iso.toFixed(2);
-    hVal.textContent = heightScale.toFixed(2);
+    const iso = syncLabel(isoSlider, isoVal, v => v.toFixed(2));
+    const heightScale = syncLabel(heightSlider, hVal, v => v.toFixed(2));
 
     if (mesh) {
       group.remove(mesh);
@@ -155,7 +88,6 @@ export function createMarchingCubesModule(container) {
     }
 
     const field3D = buildFieldFrom2D(input, size, heightScale);
-
     const geo = buildMarchingCubes(field3D, size, iso, cubeSize);
 
     const mat = new THREE.MeshStandardMaterial({
@@ -173,48 +105,37 @@ export function createMarchingCubesModule(container) {
     mesh.geometry.computeVertexNormals();
 
     group.add(mesh);
+
+    emitter.emit();
   }
 
-  rebuildBtn.addEventListener('click', rebuild);
+  // every control change rebuilds immediately - no manual rebuild button
+  isoSlider.addEventListener('input', rebuild);
+  heightSlider.addEventListener('input', rebuild);
 
-  // sliders update labels only (no auto rebuild)
-  isoSlider.addEventListener('input', () => {
-    isoVal.textContent = parseFloat(isoSlider.value).toFixed(2);
+  configNode.subscribe(() => {
+    const c = configNode.getConfig();
+    viewport.setSize(c.viewportSize);
+    viewport.setBackground(c.background);
+    viewport.setAutoRotate(c.autoRotate);
+    viewport.setRotationSpeed(c.rotationSpeed);
   });
 
-  heightSlider.addEventListener('input', () => {
-    hVal.textContent = parseFloat(heightSlider.value).toFixed(2);
-  });
+  viewport.startLoop();
 
-  zoomInBtn.addEventListener('click', () => {
-    camera.position.multiplyScalar(0.8);
-  });
+  return {
+    el: module,
 
-  zoomOutBtn.addEventListener('click', () => {
-    camera.position.multiplyScalar(1.2);
-  });
+    setInput(node) {
+      inputNode = node;
+      node.subscribe(rebuild);
+      rebuild();
+    },
 
-  function animate() {
-    requestAnimationFrame(animate);
+    getMesh() {
+      return mesh;
+    },
 
-    group.rotation.y += 0.01;
-
-    renderer.render(scene, camera);
-  }
-
-  animate();
-
-return {
-
-  setInput(fn) {
-    getInput = fn;
-    rebuild();
-  },
-
-  rebuild,
-
-  getMesh() {
-    return mesh;
-  }
-};
+    subscribe: emitter.subscribe
+  };
 }

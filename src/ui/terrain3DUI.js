@@ -1,15 +1,17 @@
 import * as THREE from 'https://esm.sh/three@0.160';
-import { createTerrainMesh } from '../modules/terrainMesh.js';
+import { createTerrainMesh, createWaterPlane } from '../modules/terrainMesh.js';
+import { createEmitter } from '../core/reactive.js';
+import { createViewport3d, bindZoomButtons } from './helpers/viewport3d.js';
+import { syncLabel } from './helpers/controls.js';
 
-export function createTerrain3DModule(container) {
+export function createLandmassModule(container, configNode) {
 
   const module = document.createElement('div');
   module.className = 'module';
 
   module.innerHTML = `
     <div class="module-header">
-      <span>3. 3D View</span>
-      <span>Output: mesh</span>
+      <span>4. Landmass</span>
     </div>
 
     <div class="module-body">
@@ -37,8 +39,8 @@ export function createTerrain3DModule(container) {
         >
 
         <div style="margin-top:10px;">
-          <button id="zoomIn">+</button>
-          <button id="zoomOut">-</button>
+          <button class="zoomIn">+</button>
+          <button class="zoomOut">-</button>
         </div>
 
       </div>
@@ -53,42 +55,29 @@ export function createTerrain3DModule(container) {
   container.appendChild(module);
 
   const canvas = module.querySelector('canvas');
+  const config = configNode.getConfig();
 
-  // renderer
-  const renderer = new THREE.WebGLRenderer({
-    canvas
+  const viewport = createViewport3d(canvas, {
+    size: config.viewportSize,
+    background: config.background,
+    cameraDistance: 1.2,
+    far: 10
   });
 
-  renderer.setSize(500, 500);
+  viewport.setAutoRotate(config.autoRotate);
+  viewport.setRotationSpeed(config.rotationSpeed);
 
-  // scene
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111111);
+  bindZoomButtons(module, viewport);
 
-  // camera
-  const camera = new THREE.PerspectiveCamera(
-    60,
-    1,
-    0.1,
-    10
-  );
+  // everything that rotates lives in this group
+  const group = new THREE.Group();
+  viewport.scene.add(group);
+  viewport.setRotationTarget(group);
 
-  camera.position.set(1.2, 1, 1.2);
-  camera.lookAt(0, 0, 0);
+  const waterPlane = createWaterPlane();
+  group.add(waterPlane);
 
-  // light
-  const light = new THREE.DirectionalLight(
-    0xffffff,
-    1
-  );
-
-  light.position.set(1, 2, 1);
-
-  scene.add(light);
-
-  // internal state
-  let mesh = null;
-  let getInput = null;
+  let terrainMesh = null;
 
   // ui controls
   const heightSlider = module.querySelector('#height');
@@ -97,76 +86,82 @@ export function createTerrain3DModule(container) {
   const hVal = module.querySelector('#hVal');
   const wVal = module.querySelector('#wVal');
 
-  const zoomIn = module.querySelector('#zoomIn');
-  const zoomOut = module.querySelector('#zoomOut');
+  const emitter = createEmitter();
 
-  function update() {
+  let inputNode = null;
 
-    if (!getInput) return;
+  function currentHeightScale() {
+    return parseFloat(heightSlider.value);
+  }
 
-    const field = getInput();
+  function currentWaterLevel() {
+    return parseFloat(waterSlider.value);
+  }
 
+  // moving the water level only repositions the plane - no terrain rebuild
+  function updateWaterPosition() {
+    const waterLevel = syncLabel(waterSlider, wVal, v => v.toFixed(2));
+    waterPlane.position.y = waterLevel * currentHeightScale();
+  }
+
+  function rebuildTerrain() {
+    if (!inputNode) return;
+
+    const field = inputNode.getOutput();
     if (!field) return;
 
-    const heightScale = parseFloat(heightSlider.value);
-    const waterLevel = parseFloat(waterSlider.value);
+    const heightScale = syncLabel(heightSlider, hVal, v => v.toFixed(2));
 
-    hVal.textContent = heightScale.toFixed(2);
-    wVal.textContent = waterLevel.toFixed(2);
-
-    // remove previous mesh
-    if (mesh) {
-      scene.remove(mesh);
+    if (terrainMesh) {
+      group.remove(terrainMesh);
+      terrainMesh.geometry.dispose();
+      terrainMesh.material.dispose();
     }
 
-    // generate terrain mesh
-    mesh = createTerrainMesh(field, {
-      heightScale,
-      waterLevel
-    });
+    terrainMesh = createTerrainMesh(field, { heightScale });
+    group.add(terrainMesh);
 
-    // add to scene
-    scene.add(mesh);
+    updateWaterPosition();
+
+    emitter.emit();
   }
 
-  // events
-  heightSlider.addEventListener('input', update);
-  waterSlider.addEventListener('input', update);
+  heightSlider.addEventListener('input', rebuildTerrain);
 
-  zoomIn.addEventListener('click', () => {
-    camera.position.multiplyScalar(0.8);
+  waterSlider.addEventListener('input', () => {
+    updateWaterPosition();
+    emitter.emit();
   });
 
-  zoomOut.addEventListener('click', () => {
-    camera.position.multiplyScalar(1.2);
+  configNode.subscribe(() => {
+    const c = configNode.getConfig();
+    viewport.setSize(c.viewportSize);
+    viewport.setBackground(c.background);
+    viewport.setAutoRotate(c.autoRotate);
+    viewport.setRotationSpeed(c.rotationSpeed);
   });
 
-  // render loop
-  function animate() {
-
-    requestAnimationFrame(animate);
-
-    if (mesh) {
-      mesh.rotation.y += 0.003;
-    }
-
-    renderer.render(scene, camera);
-  }
-
-  animate();
+  viewport.startLoop();
 
   // public API
   return {
+    el: module,
 
-    // receives upstream field
-    setInput(fn) {
-      getInput = fn;
-      update();
+    // receives upstream field node
+    setInput(node) {
+      inputNode = node;
+      node.subscribe(rebuildTerrain);
+      rebuildTerrain();
     },
 
-    // exposes generated THREE.Mesh
+    // group containing terrain + water plane (what Final clones)
     getMesh() {
-      return mesh;
-    }
+      return group;
+    },
+
+    getWaterLevel: currentWaterLevel,
+    getHeightScale: currentHeightScale,
+
+    subscribe: emitter.subscribe
   };
 }

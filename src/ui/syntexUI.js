@@ -1,6 +1,7 @@
 import { generateSynTex } from '../modules/syntex/syntex.js';
 import { loadPatternImage } from '../modules/syntex/loadPattern.js';
 import { PATTERNS } from '../modules/syntex/patterns.js';
+import { createEmitter } from '../core/reactive.js';
 
 export function createSynTexModule(container) {
   const module = document.createElement('div');
@@ -8,8 +9,7 @@ export function createSynTexModule(container) {
 
   module.innerHTML = `
     <div class="module-header">
-      <span>SynTex</span>
-      <span>Output: texture</span>
+      <span>5. SynTex</span>
     </div>
 
     <div class="module-body">
@@ -21,14 +21,12 @@ export function createSynTexModule(container) {
         </select>
 
         <label>Pattern</label>
-        <select id="pattern"></select>
+        <div class="pattern-grid" id="patternGrid"></div>
 
-        <img id="preview" style="
-          width:100%;
-          border-radius:6px;
-          image-rendering: pixelated;
-          image-rendering: crisp-edges;
-        " />
+        <div class="drop-zone" id="dropZone">
+          Drop PNG(s) here, or click to add patterns
+          <input type="file" id="fileInput" accept="image/png" multiple hidden>
+        </div>
 
         <label>Tile Size <span id="pVal">16</span></label>
         <input type="range" id="patch" min="4" max="64" step="4" value="16">
@@ -77,23 +75,49 @@ export function createSynTexModule(container) {
   const sizeVal = module.querySelector('#sizeVal');
 
   const pVal = module.querySelector('#pVal');
-  const patternSelect = module.querySelector('#pattern');
-  const preview = module.querySelector('#preview');
+  const patternGrid = module.querySelector('#patternGrid');
+  const dropZone = module.querySelector('#dropZone');
+  const fileInput = module.querySelector('#fileInput');
 
   const mask = module.querySelector('#mask');
   const maskRadius = module.querySelector('#maskRadius');
   const maskSoftness = module.querySelector('#maskSoftness');
 
+  const emitter = createEmitter();
+
   let patternField = null;
   let outputField = null;
 
-  // populate patterns
-  PATTERNS.sort().forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = `assets/patterns/${name}`;
-    opt.textContent = name.replace('.png', '');
-    patternSelect.appendChild(opt);
-  });
+  // built-in manifest entries + anything dropped in at runtime
+  const patterns = PATTERNS
+    .slice()
+    .sort()
+    .map(name => ({
+      name: name.replace('.png', ''),
+      src: `assets/patterns/${name}`
+    }));
+
+  let selectedIndex = 0;
+
+  function renderGrid() {
+    patternGrid.innerHTML = '';
+
+    patterns.forEach((p, i) => {
+      const thumb = document.createElement('div');
+      thumb.className = 'pattern-thumb' + (i === selectedIndex ? ' active' : '');
+      thumb.title = p.name;
+
+      const img = document.createElement('img');
+      img.src = p.src;
+      img.width = 64;
+      img.height = 64;
+
+      thumb.appendChild(img);
+      thumb.addEventListener('click', () => selectPattern(i));
+
+      patternGrid.appendChild(thumb);
+    });
+  }
 
   function render(field) {
     canvas.width = field.width;
@@ -136,22 +160,41 @@ export function createSynTexModule(container) {
 
     outputField = generateSynTex(params, patternField);
     render(outputField);
+    emitter.emit();
   }
 
-  async function loadSelectedPattern() {
-    const src = patternSelect.value;
+  async function selectPattern(index) {
+    selectedIndex = index;
+    renderGrid();
+
+    const entry = patterns[index];
 
     try {
-      preview.src = src;
-      patternField = await loadPatternImage(src);
+      patternField = await loadPatternImage(entry.src);
       update();
     } catch (e) {
-      console.error("Pattern load failed:", src, e);
+      console.error("Pattern load failed:", entry.src, e);
     }
   }
 
+  function addPatternFiles(files) {
+    const pngFiles = Array.from(files).filter(f => f.type === 'image/png');
+    if (pngFiles.length === 0) return;
+
+    pngFiles.forEach(file => {
+      patterns.push({
+        name: file.name.replace(/\.png$/i, ''),
+        src: URL.createObjectURL(file)
+      });
+    });
+
+    renderGrid();
+
+    // select the first newly added pattern
+    selectPattern(patterns.length - pngFiles.length);
+  }
+
   // events
-  patternSelect.addEventListener('change', loadSelectedPattern);
   patch.addEventListener('input', update);
   size.addEventListener('input', update);
   seed.addEventListener('change', update);
@@ -167,13 +210,30 @@ export function createSynTexModule(container) {
 
   module.querySelector('#regen').onclick = update;
 
-  loadSelectedPattern();
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => addPatternFiles(fileInput.files));
+
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    addPatternFiles(e.dataTransfer.files);
+  });
+
+  renderGrid();
+  selectPattern(selectedIndex);
 
   return {
-    setPattern(field) {
-      patternField = field;
-      update();
-    },
-    getOutput: () => outputField
+    el: module,
+    getOutput: () => outputField,
+    subscribe: emitter.subscribe
   };
 }

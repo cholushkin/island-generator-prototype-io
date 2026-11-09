@@ -1,4 +1,6 @@
 import { generateNoise } from '../modules/noise.js';
+import { createEmitter } from '../core/reactive.js';
+import { renderFieldGrayscale } from './helpers/fieldCanvas.js';
 
 export function createNoiseModule(container) {
   const module = document.createElement('div');
@@ -6,8 +8,7 @@ export function createNoiseModule(container) {
 
   module.innerHTML = `
     <div class="module-header">
-      <span>1. Noise</span>
-      <span>Output: noise_base</span>
+      <span>2. Noise</span>
     </div>
 
     <div class="module-body">
@@ -54,6 +55,8 @@ export function createNoiseModule(container) {
   const regen = module.querySelector('.regen');
   const random = module.querySelector('.random');
 
+  const emitter = createEmitter();
+
   let outputField = null;
 
   const params = {
@@ -74,26 +77,11 @@ export function createNoiseModule(container) {
     valPersistence.textContent = params.persistence.toFixed(2);
   }
 
-  function renderField(field) {
-    const img = ctx.createImageData(field.width, field.height);
-
-    for (let i = 0; i < field.data.length; i++) {
-      let v = field.data[i];
-      v = Math.floor(v * 255);
-
-      img.data[i * 4 + 0] = v;
-      img.data[i * 4 + 1] = v;
-      img.data[i * 4 + 2] = v;
-      img.data[i * 4 + 3] = 255;
-    }
-
-    ctx.putImageData(img, 0, 0);
-  }
-
   function update() {
     updateParams();
     outputField = generateNoise(params);
-    renderField(outputField);
+    renderFieldGrayscale(ctx, outputField);
+    emitter.emit();
   }
 
   [scale, octaves, persistence].forEach(el => {
@@ -112,6 +100,8 @@ export function createNoiseModule(container) {
   update();
 
   return {
-    getOutput: () => outputField
+    el: module,
+    getOutput: () => outputField,
+    subscribe: emitter.subscribe
   };
 }

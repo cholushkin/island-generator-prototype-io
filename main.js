@@ -1,46 +1,31 @@
+import { createConfigModule } from './src/ui/configUI.js';
 import { createNoiseModule } from './src/ui/noiseUI.js';
 import { createMaskModule } from './src/ui/maskUI.js';
-import { createTerrain3DModule } from './src/ui/terrain3DUI.js';
+import { createLandmassModule } from './src/ui/terrain3DUI.js';
 import { createSynTexModule } from './src/ui/syntexUI.js';
 import { createMarchingCubesModule } from './src/ui/marchingCubesUI.js';
-import { createCompilationModule } from './src/ui/compilationUI.js';
+import { createFinalModule } from './src/ui/compilationUI.js';
 
 const app = document.getElementById('app');
 
 // create modules
+const config = createConfigModule(app);
+
 const noise = createNoiseModule(app);
-
 const mask = createMaskModule(app);
-
-const terrain = createTerrain3DModule(app);
+const landmass = createLandmassModule(app, config);
 
 const syntex = createSynTexModule(app);
+const mc = createMarchingCubesModule(app, config);
 
-const mc = createMarchingCubesModule(app);
+const final = createFinalModule(app, config);
 
-const compilation = createCompilationModule(app);
+// wire the pipeline - every module is reactive, so a change anywhere
+// (sliders, seeds, dropped-in patterns, config) flows downstream on its own
+mask.setInput(noise);
+landmass.setInput(mask);
 
-// connect pipeline
-mask.setInput(() => noise.getOutput());
+mc.setInput(syntex);
 
-terrain.setInput(() => mask.getOutput());
-
-mc.setInput(() => syntex.getOutput());
-
-// connect compilation
-compilation.setTerrain(() => terrain.getMesh());
-
-compilation.setMarching(() => mc.getMesh());
-
-// IMPORTANT:
-// SynTex generation is async,
-// so MC rebuild must happen later
-setTimeout(() => {
-
-  // force MC generation
-  mc.rebuild();
-
-  // rebuild final compilation
-  compilation.rebuild();
-
-}, 500);
+final.setTerrain(landmass);
+final.setMarching(mc);

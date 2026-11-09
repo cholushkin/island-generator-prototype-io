@@ -1,0 +1,95 @@
+import * as THREE from 'https://esm.sh/three@0.160';
+
+export function createViewport3d(canvas, options = {}) {
+  const {
+    size = 500,
+    background = 0x111111,
+    cameraDistance = 2.5,
+    fov = 60,
+    near = 0.1,
+    far = 1000,
+    ambient = 0.6,
+    directional = 1
+  } = options;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(size, size);
+  renderer.setClearColor(background);
+
+  const scene = new THREE.Scene();
+
+  const camera = new THREE.PerspectiveCamera(fov, 1, near, far);
+  camera.position.set(cameraDistance, cameraDistance, cameraDistance);
+  camera.lookAt(0, 0, 0);
+
+  scene.add(new THREE.AmbientLight(0xffffff, ambient));
+
+  const light = new THREE.DirectionalLight(0xffffff, directional);
+  light.position.set(cameraDistance, cameraDistance * 1.5, cameraDistance);
+  scene.add(light);
+
+  let rotatingGroup = null;
+  let autoRotate = true;
+  let rotationSpeed = 0.003;
+
+  function setSize(px) {
+    renderer.setSize(px, px);
+  }
+
+  function setBackground(color) {
+    renderer.setClearColor(color);
+  }
+
+  function zoom(factor) {
+    camera.position.multiplyScalar(factor);
+  }
+
+  function setRotationTarget(group) {
+    rotatingGroup = group;
+  }
+
+  function setAutoRotate(v) {
+    autoRotate = v;
+  }
+
+  function setRotationSpeed(v) {
+    rotationSpeed = v;
+  }
+
+  function startLoop(onFrame) {
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (autoRotate && rotatingGroup) {
+        rotatingGroup.rotation.y += rotationSpeed;
+      }
+
+      if (onFrame) onFrame();
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+  }
+
+  return {
+    renderer,
+    scene,
+    camera,
+    setSize,
+    setBackground,
+    zoom,
+    setRotationTarget,
+    setAutoRotate,
+    setRotationSpeed,
+    startLoop
+  };
+}
+
+export function bindZoomButtons(container, viewport, selectors = { in: '.zoomIn', out: '.zoomOut' }) {
+  const zoomIn = container.querySelector(selectors.in);
+  const zoomOut = container.querySelector(selectors.out);
+
+  if (zoomIn) zoomIn.addEventListener('click', () => viewport.zoom(0.8));
+  if (zoomOut) zoomOut.addEventListener('click', () => viewport.zoom(1.2));
+}

@@ -1,9 +1,9 @@
 import * as THREE from 'https://esm.sh/three@0.160';
+import { biomeColor } from './biomes.js';
 
 export function createTerrainMesh(field, options = {}) {
   const {
-    heightScale = 0.3,
-    waterLevel = 0.05
+    heightScale = 0.3
   } = options;
 
   const width = field.width;
@@ -21,22 +21,9 @@ export function createTerrainMesh(field, options = {}) {
 
     const h = field.data[y * width + x];
 
-    // height
     pos.setY(i, h * heightScale);
 
-    let r, g, b;
-
-    if (h < waterLevel) {
-      // water (blue)
-      r = 0.1;
-      g = 0.3;
-      b = 0.8;
-    } else {
-      // gray → white
-      const t = (h - waterLevel) / (1 - waterLevel);
-      r = g = b = t;
-    }
-
+    const { r, g, b } = biomeColor(h);
     colors.push(r, g, b);
   }
 
@@ -47,5 +34,26 @@ export function createTerrainMesh(field, options = {}) {
     vertexColors: true
   });
 
-  return new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'terrain';
+  return mesh;
+}
+
+// A flat plane representing the water surface. It shares the terrain's
+// footprint (unit plane) and is positioned/scaled by the caller so moving
+// the water level only requires repositioning this mesh, no regeneration.
+export function createWaterPlane() {
+  const geo = new THREE.PlaneGeometry(1.4, 1.4);
+  geo.rotateX(-Math.PI / 2);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3a7bd5,
+    transparent: true,
+    opacity: 0.75,
+    side: THREE.DoubleSide
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = 'water';
+  return mesh;
 }
